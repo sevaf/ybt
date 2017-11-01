@@ -96,7 +96,7 @@ contract YBTCrowdsale is Pausable {
         require(refund > 0);
         weiInvested[msg.sender] = 0;
         totalWeiInvested = totalWeiInvested.sub(refund);
-        tokensProvided = tokensProvided.sub(refund);
+        //tokensProvided = tokensProvided[msg.sender].sub(refund);
 
     }
 
