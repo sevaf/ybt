@@ -50,19 +50,23 @@ contract RecurrentAllowanceToken is StandartToken {
 
     function removeAllowanceRecurrent(address spender) public returns (bool) {
         AllowanceDef storage ad = recurrentAllowances[msg.sender][spender];
-        if (recurrentAllowancesArray[msg.sender].length > 1 && recurrentAllowancesArray[msg.sender].length - 1 < ad.ind) { 
-            address toupdate = recurrentAllowancesArray[msg.sender][recurrentAllowancesArray[msg.sender].length - 1];
-            recurrentAllowancesArray[msg.sender][ad.ind] = recurrentAllowancesArray[msg.sender][recurrentAllowancesArray[msg.sender].length - 1];
-            recurrentAllowancesArray[msg.sender].length = recurrentAllowancesArray[msg.sender].length - 1;
-            recurrentAllowances[msg.sender][toupdate].ind = ad.ind;
-        } else if (recurrentAllowancesArray[msg.sender].length - 1 == ad.ind) {
-            recurrentAllowancesArray[msg.sender].length = recurrentAllowancesArray[msg.sender].length - 1;
-        } else {
-            recurrentAllowancesArray[msg.sender].length = 0;
-        }
-        RemoveRecurrent(msg.sender, spender, ad.amount, ad.start, ad.duration);
+        if (ad.amount != 0) {
+            if (recurrentAllowancesArray[msg.sender].length > 1 && recurrentAllowancesArray[msg.sender].length - 1 > ad.ind) { 
+                address toupdate = recurrentAllowancesArray[msg.sender][recurrentAllowancesArray[msg.sender].length - 1];
+                recurrentAllowancesArray[msg.sender][ad.ind] = recurrentAllowancesArray[msg.sender][recurrentAllowancesArray[msg.sender].length - 1];
+                recurrentAllowancesArray[msg.sender].length = recurrentAllowancesArray[msg.sender].length - 1;
+                recurrentAllowances[msg.sender][toupdate].ind = ad.ind;
+            } else if (recurrentAllowancesArray[msg.sender].length - 1 == ad.ind) {
+                recurrentAllowancesArray[msg.sender].length = recurrentAllowancesArray[msg.sender].length - 1;
+            } else {
+                recurrentAllowancesArray[msg.sender].length = 0;
+            }
+            RemoveRecurrent(msg.sender, spender, ad.amount, ad.start, ad.duration);
 
-        delete recurrentAllowances[msg.sender][spender];
+            delete recurrentAllowances[msg.sender][spender];
+            return true;
+        }
+        return false;
     }
 
     function getAllowancesAddresess(address _owner) public constant returns(address[]) {

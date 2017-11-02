@@ -205,10 +205,10 @@ contract('YBTToken', function(accounts) {
             const { logs } = await token.burn(1, { from: accounts[0] });
 
             const balance = await token.balanceOf(accounts[0]);
-            assert(balance, 999);
+            assert.equal(balance, 999);
 
             const totalSupply = await token.totalSupply();
-             assert(totalSupply, 999);
+             assert.equal(totalSupply, 999);
 
             const event = logs.find(e => e.event === 'Burn');
             expect(event).to.exist;
@@ -225,21 +225,18 @@ contract('YBTToken', function(accounts) {
             token = await YBTToken.new('YourBit Token', 'YBT', 1000, 18, true, true);
             billingProvider = await RecurringBillingProvider.new(token.address);
         });
-        it('should fail to approve recurrent allowance to non contract', async function() {
-            await expectThrow(token.approveRecurrent(accounts[1], 1508112000, 86400, 10, 0, 0));
-        });
         it('should be able to approve recurrent allowance', async function() {
             await token.approveRecurrent(billingProvider.address, 1508112000, 86400, 10, 0, 0);
             let result = await token.allowanceRecurrent(accounts[0], billingProvider.address);
-            assert(result[0], 10);
-            assert(result[1], 1508112000);
-            assert(result[2], 86400);
+            assert.equal(result[0], 10);
+            assert.equal(result[1], 1508112000);
+            assert.equal(result[2], 86400);
 
             await token.removeAllowanceRecurrent(billingProvider.address);
             result = await token.allowanceRecurrent(accounts[0], billingProvider.address);
-            assert(result[0], 0);
-            assert(result[1], 0);
-            assert(result[2], 0);
+            assert.equal(result[0], 0);
+            assert.equal(result[1], 0);
+            assert.equal(result[2], 0);
 
         });
 
@@ -251,11 +248,11 @@ contract('YBTToken', function(accounts) {
             await token.approveRecurrent(billingProvider.address, 1508112000, 86400, 100, 0, 0, {from: accounts[1]});
 
             assert(await billingProvider.withdrawRecurring(accounts[1], 50, { from: accounts[0] }));
-            assert(await token.balanceOf(accounts[1]), 50);
-            assert(await token.balanceOf(accounts[0]), 950);
+            assert.equal(await token.balanceOf(accounts[1]), 50);
+            assert.equal(await token.balanceOf(accounts[0]), 950);
 
             let result = await token.allowanceRecurrent(accounts[1], billingProvider.address);
-            assert(result[3], 1);
+            assert.equal(result[3], 1);
 
         });
         it('should fail to transfer reccurent before time', async function() {
@@ -274,8 +271,8 @@ contract('YBTToken', function(accounts) {
                 let b0 = await token.balanceOf(accounts[0]);
                 console.log(b1);
                 console.log(b0);
-                assert(b1, 50);
-                assert(b0, 950);
+                assert.equal(b1, 50);
+                assert.equal(b0, 950);
         });
 
         it('should remove allowance', async function() {
@@ -283,28 +280,31 @@ contract('YBTToken', function(accounts) {
             let billingProvider1 = await RecurringBillingProvider.new(token.address);
             let billingProvider2 = await RecurringBillingProvider.new(token.address);
             await token.approveRecurrent(billingProvider.address, 1508112000, 2629743, 100, 0, 1, {from: accounts[1]});
-            await token.approveRecurrent(billingProvider1.address, 1508112000, 2629743, 100, 0, 1, {from: accounts[1]});
-            await token.approveRecurrent(billingProvider2.address, 1508112000, 2629743, 100, 0, 1, {from: accounts[1]});
-            let res = await token.getAllowancesAddresess({from: accounts[1]});
+            await token.approveRecurrent(billingProvider1.address, 1508112000, 2629743, 101, 0, 1, {from: accounts[1]});
+            await token.approveRecurrent(billingProvider2.address, 1508112000, 2629743, 102, 0, 1, {from: accounts[1]});
+            let res = await token.getAllowancesAddresess(accounts[1]);
             console.log(res);
-            assert(res.length, 3);
-            assert(res[0], billingProvider.address);
-            assert(res[1], billingProvider1.address);
-            assert(res[2], billingProvider2.address);
+            assert.equal(res.length, 3);
+            assert.equal(res[0], billingProvider.address);
+            assert.equal(res[1], billingProvider1.address);
+            assert.equal(res[2], billingProvider2.address);
 
-            await token.removeAllowanceRecurrent(billingProvider1.address);
-            res = await token.getAllowancesAddresess({from: accounts[1]});
-            assert(res.length, 2);
-            assert(res[0], billingProvider.address);
-            assert(res[1], billingProvider2.address);
-            await token.removeAllowanceRecurrent(billingProvider2.address);
-            res = await token.getAllowancesAddresess({from: accounts[1]});
-            assert(res.length, 1);
-            assert(res[0], billingProvider.address);
+            await token.removeAllowanceRecurrent(billingProvider1.address, {from: accounts[1]});
+            res = await token.getAllowancesAddresess(accounts[1]);
+             console.log(res);
+            assert.equal(res.length, 2);
+            assert.equal(res[0], billingProvider.address);
+            assert.equal(res[1], billingProvider2.address);
+            await token.removeAllowanceRecurrent(billingProvider2.address, {from: accounts[1]});
+            res = await token.getAllowancesAddresess(accounts[1]);
+             console.log(res);
+            assert.equal(res.length, 1);
+            assert.equal(res[0], billingProvider.address);
 
-            await token.removeAllowanceRecurrent(billingProvider.address);
-             res = await token.getAllowancesAddresess({from: accounts[1]});
-            assert(res.length, 0);
+            await token.removeAllowanceRecurrent(billingProvider.address, {from: accounts[1]});
+             res = await token.getAllowancesAddresess(accounts[1]);
+              console.log(res);
+            assert.equal(res.length, 0);
  
         });
     });
