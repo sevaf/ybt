@@ -105,7 +105,7 @@ contract YBTCrowdsale is Pausable {
         invest(msg.sender);
     }
 
-    function invest(address beneficiary) whenNotPaused payable public  {
+    function invest(address beneficiary) whenNotPaused payable public {
         Status status = getStatus();
         require(status == Status.PreSale || status == Status.ActiveSale);
         require(msg.value > minInvestWei && msg.value < maxInvestWei);
@@ -188,12 +188,13 @@ contract YBTCrowdsale is Pausable {
     }
 
     function claimRefund() public hasStatus(Status.Refunding) {
-        uint refund = weiInvested[msg.sender].add(presaleDeposit[msg.sender]);
+        uint presaleRefund = presaleDeposit[msg.sender];
+        uint refund = weiInvested[msg.sender].add(presaleRefund);
         require(refund > 0);
         weiInvested[msg.sender] = 0;
         presaleDeposit[msg.sender] = 0;
         totalWeiInvested = totalWeiInvested.sub(refund);
-        totalPresaleDeposit = totalPresaleDeposit.sub(presaleDeposit[msg.sender]);
+        totalPresaleDeposit = totalPresaleDeposit.sub(presaleRefund);
         totalWeiRefunded = totalWeiRefunded.add(refund);
         Refund(msg.sender, refund);
         msg.sender.transfer(refund);

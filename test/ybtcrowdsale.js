@@ -105,7 +105,7 @@ contract('YBTCrowdsale', function(accounts){
         });
 
         it('should return 10% bonus when invested more than additionalBonus', async function() {
-            await increaseTimeTo(this.startTime  + duration.days(5));
+            await increaseTimeTo(this.startTime  + duration.days(6));
             let invest = additionalBonus.add(1);
             let expected = invest.times(rate);
             expected = expected.add(expected.divToInt(10));
@@ -163,12 +163,77 @@ contract('YBTCrowdsale', function(accounts){
             (await this.crowdsale.tokensProvided(accounts[2])).should.be.bignumber.equal(tokens);
             (await this.crowdsale.totalWeiInvested()).should.be.bignumber.equal(wei);
             (await this.crowdsale.totalTokensProvided()).should.be.bignumber.equal(tokens);
+        });
+        it('should fail to invest after end', async function() {
+            await increaseTimeTo(this.afterEndTime);
+            await expectThrow(this.crowdsale.sendTransaction({from: accounts[2], value: 1000}));
+        });
 
+        it('should fail to invest where paused', async function() {
+            await increaseTimeTo(this.startTime  + duration.seconds(1));
+            await this.crowdsale.pause();
+            assert(await this.crowdsale.paused());
+            await expectThrow(this.crowdsale.sendTransaction({from: accounts[2], value: 1000}));
 
+            await this.crowdsale.unpause();
+
+            assert(!(await this.crowdsale.paused()));
+
+            assert(await this.crowdsale.sendTransaction({from: accounts[2], value: 1000}));
         });
     });
 
-    
+    describe('validate refund', async function() {
+        it('should fail to send funds whe not failed', async function() {
+            await increaseTimeTo(this.startTime  + duration.seconds(1));
+            assert(await this.crowdsale.sendTransaction({from: accounts[0], value: minGoal}));
+            await increaseTimeTo(this.afterEndTime);
+            //(await this.crowdsale.getStatus()).should.be.bignumber.equal(5);
+            await expectThrow(this.crowdsale.sendFunds({value: 100}));
+        });
+
+        it('should accept funds for refund', async function() {
+            await increaseTimeTo(this.startTime  + duration.seconds(1));
+            assert(await this.crowdsale.sendTransaction({from: accounts[0], value: 1000}));
+            await increaseTimeTo(this.afterEndTime);
+            (await this.crowdsale.getStatus()).should.be.bignumber.equal(5);
+            await this.crowdsale.sendFunds({value: 1000});
+            (await this.crowdsale.loadedRefundAmount()).should.be.bignumber.equal(1000);
+            web3.eth.getBalance(this.crowdsale.address).should.be.bignumber.equal(1000);
+        });
+
+        it('should let owner to withdral funds when refunding', async function () {
+            await increaseTimeTo(this.startTime  + duration.seconds(1));
+            assert(await this.crowdsale.sendTransaction({from: accounts[0], value: 1000}));
+            await increaseTimeTo(this.afterEndTime);
+            let res = await this.crowdsale.sendFunds({value: 1000, from: wallet});
+
+            await this.crowdsale.withdrawFunds(500);
+
+            (await this.crowdsale.loadedRefundAmount()).should.be.bignumber.equal(500);
+
+        });
+
+        it('should be able to claim refund', async function() {
+            assert(await this.crowdsale.sendTransaction({from: accounts[3], value: 10000}));
+            await increaseTimeTo(this.startTime  + duration.seconds(1));
+            assert(await this.crowdsale.sendTransaction({from: accounts[2], value: 1000}));
+            await increaseTimeTo(this.afterEndTime);
+            let res = await this.crowdsale.sendFunds({value: 11000, from: wallet});
+            await this.crowdsale.claimRefund({from: accounts[2]});
+            (await this.crowdsale.weiInvested(accounts[2])).should.be.bignumber.equal(0);
+            (await this.crowdsale.totalWeiRefunded()).should.be.bignumber.equal(1000);
+            await this.crowdsale.claimRefund({from: accounts[3]});
+            (await this.crowdsale.weiInvested(accounts[3])).should.be.bignumber.equal(0);
+            (await this.crowdsale.presaleDeposit(accounts[3])).should.be.bignumber.equal(0);
+
+            (await this.crowdsale.totalWeiInvested()).should.be.bignumber.equal(0);
+            (await this.crowdsale.totalPresaleDeposit()).should.be.bignumber.equal(0);
+            (await this.crowdsale.totalWeiRefunded()).should.be.bignumber.equal(11000);
+            web3.eth.getBalance(this.crowdsale.address).should.be.bignumber.equal(0);
+            
+        });
+    });
 
 
 });
