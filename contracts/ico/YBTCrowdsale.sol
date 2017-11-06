@@ -10,13 +10,20 @@ contract YBTCrowdsale is Pausable {
 
     StandartToken public token;
 
+    address public tokensOwner;
+
     address public wallet;
 
     mapping (address => uint) public weiInvested;
     mapping (address => uint) public tokensProvided;
 
+    mapping (address => uint) public presaleDeposit;
+
     uint public totalWeiInvested;
     uint public totalTokensProvided;
+    uint public totalPresaleDeposit;
+
+    uint public totalPresaleClaimed;
 
     uint public start;
     uint public end;
@@ -32,11 +39,13 @@ contract YBTCrowdsale is Pausable {
 
     uint public rate;
 
-    event TokenPurchase(address indexed purchaser, uint256 weiAmount, uint256 tokensAmount);
+    event TokenPurchase(address indexed purchaser, address indexed beneficiary, uint256 weiAmount, uint256 tokensAmount);
+    event PresaleDeposit(address indexed purchaser, address indexed beneficiary, uint256 weiAmount);
+    event PresaleClaim (address indexed purchaser, uint256 weiAmount, uint256 tokensAmount);
     event Refund(address indexed purchaser, uint256 weiAmount);
     enum Status { Unknown, Prepare, PreSale, ActiveSale, Success, Failed, Refunding }
 
-    function YBTCrowdsale(address _token, uint _start, uint _end, uint _rate, uint _minGoal, uint _additionalBonus, address _wallet) {
+    function YBTCrowdsale(address _token, uint _start, uint _end, uint _rate, uint _minGoal, uint _additionalBonus, address _wallet, address _tokensOwner) {
 
         require(_start > 0 && _end > 0 && _start < _end);
         require(_wallet != address(0));
@@ -50,6 +59,27 @@ contract YBTCrowdsale is Pausable {
         rate = _rate;
         minGoalWei = _minGoal;
         additionalBonusWei = _additionalBonus;
+        tokensOwner = _tokensOwner;
+    }
+
+    function setWallet(address _wallet) onlyOwner public {
+        require(_wallet != address(0));
+        wallet = _wallet;
+    }
+
+    function setTokensOwner(address _tokensOwner) onlyOwner public {
+        require(_tokensOwner != address(0));
+        tokensOwner = _tokensOwner;
+    }
+
+    function setMinGoal(uint _minGoal) onlyOwner public {
+        require(_minGoal >= totalWeiInvested);
+        minGoalWei = _minGoal;
+    }
+
+    function setRate(uint _rate) onlyOwner public {
+        require(_rate > 0);
+        rate = _rate;
     }
 
     function setMinWei(uint _min) onlyOwner public {
@@ -68,56 +98,77 @@ contract YBTCrowdsale is Pausable {
 
 
     function remainingTokens() public constant returns(uint) {
-        return token.allowance(owner, this);
+        return token.allowance(tokensOwner, this);
     }
 
     function() payable public {
-        invest();
+        invest(msg.sender);
     }
 
-    function invest() whenNotPaused payable public {
+    function invest(address beneficiary) whenNotPaused payable public  {
         Status status = getStatus();
         require(status == Status.PreSale || status == Status.ActiveSale);
         require(msg.value > minInvestWei && msg.value < maxInvestWei);
-        require(remainingTokens() > 0);
-        
 
+     
         uint weiAmount = msg.value;
+        if (status == Status.ActiveSale) {
+            uint tokens = calculateTokens(weiAmount);
 
-        uint tokens = calculateTokens(weiAmount);
-
-        require(remainingTokens() >= tokens);
-        token.transferFrom(owner, msg.sender, tokens);
-        weiInvested[msg.sender] = weiInvested[msg.sender].add(weiAmount);
-        tokensProvided[msg.sender] = tokensProvided[msg.sender].add(tokens);
-        
+            require(remainingTokens() >= tokens);
+            token.transferFrom(tokensOwner, beneficiary, tokens);
+            weiInvested[beneficiary] = weiInvested[beneficiary].add(weiAmount);
+            tokensProvided[beneficiary] = tokensProvided[beneficiary].add(tokens);
+            totalWeiInvested = totalWeiInvested.add(weiAmount);
+            totalTokensProvided = totalTokensProvided.add(tokens);
+            TokenPurchase(msg.sender, beneficiary, weiAmount, tokens);
+        } else {
+            presaleDeposit[beneficiary] = presaleDeposit[beneficiary].add(weiAmount);
+            totalPresaleDeposit = totalPresaleDeposit.add(weiAmount);
+            totalWeiInvested = totalWeiInvested.add(weiAmount);
+            PresaleDeposit(msg.sender, beneficiary, weiAmount);
+        }
         wallet.transfer(msg.value);
-        TokenPurchase(msg.sender, weiAmount, tokens);
+        
     } 
+
+    function claimPresaleTokens() hasStatus(Status.Success) public returns(bool) {
+        uint deposit = presaleDeposit[msg.sender];
+        require(deposit > 0);
+        presaleDeposit[msg.sender] = 0;
+        uint tokens = deposit.mul(rate);
+        uint bonus = tokens.div(10).mul(3);
+        tokens = tokens.add(bonus);
+        require(remainingTokens() >= tokens);
+        token.transferFrom(tokensOwner, msg.sender, tokens);
+        totalTokensProvided = totalTokensProvided.add(tokens);
+        tokensProvided[msg.sender] = tokensProvided[msg.sender].add(tokens);
+        weiInvested[msg.sender] = weiInvested[msg.sender].add(deposit);
+        totalPresaleClaimed = totalPresaleClaimed.add(deposit);
+        PresaleClaim(msg.sender, deposit, tokens);
+    }
 
     function calculateTokens(uint weiAmount) public constant returns(uint) {
         uint tokens = weiAmount.mul(rate);
         uint bonus = 0;
-        if(getStatus() == Status.PreSale) {
-            bonus = tokens.div(100).mul(30); // 30% bonus
-        } else {
-            uint timeFromStart = block.timestamp.sub(start);
-            if (timeFromStart <= 1 days) {
-                bonus = tokens.div(100).mul(15); // 15% bonus
-            } else if (timeFromStart <= 2 days) {
-                bonus = tokens.div(10); // 10% bonus
-            } else if (timeFromStart <= 3 days) {
-                bonus = tokens.div(100).mul(8); // 8% bonus
-            }  else if (timeFromStart <= 4 days) {
-                bonus = tokens.div(100).mul(5); // 8% bonus
-            }
 
-            if (additionalBonusWei > 0 && weiAmount > additionalBonusWei) {
-                bonus = bonus.add(tokens.div(10));
-            }
+        uint timeFromStart = block.timestamp.sub(start);
+        if (timeFromStart <= 1 days) {
+            bonus = tokens.div(100).mul(15); // 15% bonus
+        } else if (timeFromStart <= 2 days) {
+            bonus = tokens.div(100).mul(12); // 12% bonus
+        } else if (timeFromStart <= 3 days) {
+            bonus = tokens.div(10); // 10% bonus
+        } else if (timeFromStart <= 4 days) {
+            bonus = tokens.div(100).mul(8); // 8% bonus
+        } else if (timeFromStart <= 5 days) {
+            bonus = tokens.div(100).mul(5); // 5% bonus
+        } 
+
+        if (additionalBonusWei > 0 && weiAmount > additionalBonusWei) {
+            bonus = bonus.add(tokens.div(10));
         }
-
-       
+        
 
         tokens = tokens.add(bonus);
         return tokens;
@@ -137,10 +188,12 @@ contract YBTCrowdsale is Pausable {
     }
 
     function claimRefund() public hasStatus(Status.Refunding) {
-        uint refund = weiInvested[msg.sender];
+        uint refund = weiInvested[msg.sender].add(presaleDeposit[msg.sender]);
         require(refund > 0);
         weiInvested[msg.sender] = 0;
+        presaleDeposit[msg.sender] = 0;
         totalWeiInvested = totalWeiInvested.sub(refund);
+        totalPresaleDeposit = totalPresaleDeposit.sub(presaleDeposit[msg.sender]);
         totalWeiRefunded = totalWeiRefunded.add(refund);
         Refund(msg.sender, refund);
         msg.sender.transfer(refund);

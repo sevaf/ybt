@@ -1,12 +1,12 @@
 pragma solidity ^0.4.13;
 
-import "./RecurrentAllowanceToken.sol";
 import "./ReleasableToken.sol";
 import "./MintableToken.sol";
 import "./BurnableToken.sol";
+import "./ExternalApprovalToken.sol";
 
 
-contract YBTToken is RecurrentAllowanceToken, ReleasableToken, MintableToken, BurnableToken {
+contract YBTToken is ExternalApprovalToken, ReleasableToken, MintableToken, BurnableToken {
 
     string public name;
     string public symbol;

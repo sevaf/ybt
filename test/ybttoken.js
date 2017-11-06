@@ -13,7 +13,7 @@ const assertJump = require('./assertJump');
 import expectThrow from './expectThrow';
 
 var YBTToken = artifacts.require('./token/YBTToken.sol');
-var RecurringBillingProvider = artifacts.require('./providers/RecurringBillingProvider.sol');
+var SimpleApprovalManager = artifacts.require('./providers/SimpleApprovalManager.sol');
 
 contract('YBTToken', function(accounts) {
 
@@ -218,96 +218,142 @@ contract('YBTToken', function(accounts) {
             await expectThrow(token.burn(2000, { from: accounts[0] }));
         });
      });
-    describe('validate recurrent allowance logic', async function() {
+
+     describe('validate external approbe logic', async function() {
         let token;
-        let billingProvider;
+        let approvalManager;
         beforeEach(async function() {
             token = await YBTToken.new('YourBit Token', 'YBT', 1000, 18, true, true);
-            billingProvider = await RecurringBillingProvider.new(token.address);
-        });
-        it('should be able to approve recurrent allowance', async function() {
-            await token.approveRecurrent(billingProvider.address, 1508112000, 86400, 10, 0, 0);
-            let result = await token.allowanceRecurrent(accounts[0], billingProvider.address);
-            assert.equal(result[0], 10);
-            assert.equal(result[1], 1508112000);
-            assert.equal(result[2], 86400);
-
-            await token.removeAllowanceRecurrent(billingProvider.address);
-            result = await token.allowanceRecurrent(accounts[0], billingProvider.address);
-            assert.equal(result[0], 0);
-            assert.equal(result[1], 0);
-            assert.equal(result[2], 0);
-
+            approvalManager = await SimpleApprovalManager.new();
         });
 
-        it('should fail to transfer reccurent without approval', async function() {
-             await expectThrow(billingProvider.withdrawRecurring(accounts[1], 100, {from: accounts[0]}));
+        it('should fail transfer from external approval without approval manager', async function() {
+            await expectThrow(token.transferFromExternal(accounts[0], accounts[1], 10));
         });
-        it('should be able to transfer reccurent', async function() {
-            await token.transfer(accounts[1], 100);
-            await token.approveRecurrent(billingProvider.address, 1508112000, 86400, 100, 0, 0, {from: accounts[1]});
 
-            assert(await billingProvider.withdrawRecurring(accounts[1], 50, { from: accounts[0] }));
-            assert.equal(await token.balanceOf(accounts[1]), 50);
-            assert.equal(await token.balanceOf(accounts[0]), 950);
-
-            let result = await token.allowanceRecurrent(accounts[1], billingProvider.address);
-            assert.equal(result[3], 1);
-
+        it('should fail transfer from external approval when not approved', async function() {
+            await token.setApprovalManager(approvalManager.address);
+            assert.equal(await token.approvalManager(), approvalManager.address);
+            await expectThrow(token.transferFromExternal(accounts[0], accounts[1], 10));
         });
-        it('should fail to transfer reccurent before time', async function() {
-                await token.transfer(accounts[1], 100);
-                await token.approveRecurrent(billingProvider.address, web3.eth.getBlock('latest').timestamp, 2629743, 100, 0, 1, {from: accounts[1]});
 
-                await expectThrow(billingProvider.withdrawRecurring(accounts[1], 50, { from: accounts[0] }));
+        it('should set approval propely', async function() {
+            await token.setApprovalManager(approvalManager.address);
+            assert(await approvalManager.approve(approvalManager.address, accounts[1], 10, ''));
+
+            let allowance = await approvalManager.allowance(accounts[0], accounts[1]);
+            console.log(allowance);
+            assert.equal(allowance[0], 10);
+            assert.equal(allowance[1], approvalManager.address);
         });
-        it('should transfer reccurent after time', async function() {
-                await token.transfer(accounts[1], 100);
-                await token.approveRecurrent(billingProvider.address, 1508112000, 2629743, 100, 0, 1, {from: accounts[1]});
+
+        it('should transfer from external after approval', async function() {
+            await token.setApprovalManager(approvalManager.address);
+            assert(await approvalManager.approve(approvalManager.address, accounts[1], 10, ''));
+            assert(await token.transferFromExternal(accounts[0], accounts[2], 5, {from: accounts[1]}));
+            assert.equal(await token.balanceOf(accounts[2]), 5);
+            assert.equal(await token.balanceOf(accounts[0]), 995);
+
+            let allowance = await approvalManager.allowance(accounts[0], accounts[1]);
+
+            assert.equal(allowance[0], 5);
+        });
+        it('should fail transfer from external after approval not enough amount', async function() {
+            await token.setApprovalManager(approvalManager.address);
+            assert(await approvalManager.approve(approvalManager.address, accounts[1], 10, ''));
+            await expectThrow(token.transferFromExternal(accounts[0], accounts[2], 15, {from: accounts[1]}));
+        });
+     });
+    // describe('validate recurrent allowance logic', async function() {
+    //     let token;
+    //     let billingProvider;
+    //     beforeEach(async function() {
+    //         token = await YBTToken.new('YourBit Token', 'YBT', 1000, 18, true, true);
+    //         billingProvider = await RecurringBillingProvider.new(token.address);
+    //     });
+    //     it('should be able to approve recurrent allowance', async function() {
+    //         await token.approveRecurrent(billingProvider.address, 1508112000, 86400, 10, 0, 0);
+    //         let result = await token.allowanceRecurrent(accounts[0], billingProvider.address);
+    //         assert.equal(result[0], 10);
+    //         assert.equal(result[1], 1508112000);
+    //         assert.equal(result[2], 86400);
+
+    //         await token.removeAllowanceRecurrent(billingProvider.address);
+    //         result = await token.allowanceRecurrent(accounts[0], billingProvider.address);
+    //         assert.equal(result[0], 0);
+    //         assert.equal(result[1], 0);
+    //         assert.equal(result[2], 0);
+
+    //     });
+
+    //     it('should fail to transfer reccurent without approval', async function() {
+    //          await expectThrow(billingProvider.withdrawRecurring(accounts[1], 100, {from: accounts[0]}));
+    //     });
+    //     it('should be able to transfer reccurent', async function() {
+    //         await token.transfer(accounts[1], 100);
+    //         await token.approveRecurrent(billingProvider.address, 1508112000, 86400, 100, 0, 0, {from: accounts[1]});
+
+    //         assert(await billingProvider.withdrawRecurring(accounts[1], 50, { from: accounts[0] }));
+    //         assert.equal(await token.balanceOf(accounts[1]), 50);
+    //         assert.equal(await token.balanceOf(accounts[0]), 950);
+
+    //         let result = await token.allowanceRecurrent(accounts[1], billingProvider.address);
+    //         assert.equal(result[3], 1);
+
+    //     });
+    //     it('should fail to transfer reccurent before time', async function() {
+    //             await token.transfer(accounts[1], 100);
+    //             await token.approveRecurrent(billingProvider.address, web3.eth.getBlock('latest').timestamp, 2629743, 100, 0, 1, {from: accounts[1]});
+
+    //             await expectThrow(billingProvider.withdrawRecurring(accounts[1], 50, { from: accounts[0] }));
+    //     });
+    //     it('should transfer reccurent after time', async function() {
+    //             await token.transfer(accounts[1], 100);
+    //             await token.approveRecurrent(billingProvider.address, 1508112000, 2629743, 100, 0, 1, {from: accounts[1]});
                 
-                await timer(2712624);
-                assert(await billingProvider.withdrawRecurring(accounts[1], 50, { from: accounts[0] }));
-                let b1 = await token.balanceOf(accounts[1]);
-                let b0 = await token.balanceOf(accounts[0]);
-                console.log(b1);
-                console.log(b0);
-                assert.equal(b1, 50);
-                assert.equal(b0, 950);
-        });
+    //             await timer(2712624);
+    //             assert(await billingProvider.withdrawRecurring(accounts[1], 50, { from: accounts[0] }));
+    //             let b1 = await token.balanceOf(accounts[1]);
+    //             let b0 = await token.balanceOf(accounts[0]);
+    //             console.log(b1);
+    //             console.log(b0);
+    //             assert.equal(b1, 50);
+    //             assert.equal(b0, 950);
+    //     });
 
-        it('should remove allowance', async function() {
-            await token.transfer(accounts[1], 100);
-            let billingProvider1 = await RecurringBillingProvider.new(token.address);
-            let billingProvider2 = await RecurringBillingProvider.new(token.address);
-            await token.approveRecurrent(billingProvider.address, 1508112000, 2629743, 100, 0, 1, {from: accounts[1]});
-            await token.approveRecurrent(billingProvider1.address, 1508112000, 2629743, 101, 0, 1, {from: accounts[1]});
-            await token.approveRecurrent(billingProvider2.address, 1508112000, 2629743, 102, 0, 1, {from: accounts[1]});
-            let res = await token.getAllowancesAddresess(accounts[1]);
-            console.log(res);
-            assert.equal(res.length, 3);
-            assert.equal(res[0], billingProvider.address);
-            assert.equal(res[1], billingProvider1.address);
-            assert.equal(res[2], billingProvider2.address);
+    //     it('should remove allowance', async function() {
+    //         await token.transfer(accounts[1], 100);
+    //         let billingProvider1 = await RecurringBillingProvider.new(token.address);
+    //         let billingProvider2 = await RecurringBillingProvider.new(token.address);
+    //         await token.approveRecurrent(billingProvider.address, 1508112000, 2629743, 100, 0, 1, {from: accounts[1]});
+    //         await token.approveRecurrent(billingProvider1.address, 1508112000, 2629743, 101, 0, 1, {from: accounts[1]});
+    //         await token.approveRecurrent(billingProvider2.address, 1508112000, 2629743, 102, 0, 1, {from: accounts[1]});
+    //         let res = await token.getAllowancesAddresess(accounts[1]);
+    //         console.log(res);
+    //         assert.equal(res.length, 3);
+    //         assert.equal(res[0], billingProvider.address);
+    //         assert.equal(res[1], billingProvider1.address);
+    //         assert.equal(res[2], billingProvider2.address);
 
-            await token.removeAllowanceRecurrent(billingProvider1.address, {from: accounts[1]});
-            res = await token.getAllowancesAddresess(accounts[1]);
-             console.log(res);
-            assert.equal(res.length, 2);
-            assert.equal(res[0], billingProvider.address);
-            assert.equal(res[1], billingProvider2.address);
-            await token.removeAllowanceRecurrent(billingProvider2.address, {from: accounts[1]});
-            res = await token.getAllowancesAddresess(accounts[1]);
-             console.log(res);
-            assert.equal(res.length, 1);
-            assert.equal(res[0], billingProvider.address);
+    //         await token.removeAllowanceRecurrent(billingProvider1.address, {from: accounts[1]});
+    //         res = await token.getAllowancesAddresess(accounts[1]);
+    //          console.log(res);
+    //         assert.equal(res.length, 2);
+    //         assert.equal(res[0], billingProvider.address);
+    //         assert.equal(res[1], billingProvider2.address);
+    //         await token.removeAllowanceRecurrent(billingProvider2.address, {from: accounts[1]});
+    //         res = await token.getAllowancesAddresess(accounts[1]);
+    //          console.log(res);
+    //         assert.equal(res.length, 1);
+    //         assert.equal(res[0], billingProvider.address);
 
-            await token.removeAllowanceRecurrent(billingProvider.address, {from: accounts[1]});
-             res = await token.getAllowancesAddresess(accounts[1]);
-              console.log(res);
-            assert.equal(res.length, 0);
+    //         await token.removeAllowanceRecurrent(billingProvider.address, {from: accounts[1]});
+    //          res = await token.getAllowancesAddresess(accounts[1]);
+    //           console.log(res);
+    //         assert.equal(res.length, 0);
  
-        });
-    });
+    //     });
+    // });
     
 
 });
